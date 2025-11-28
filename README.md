@@ -1,40 +1,34 @@
-# Gold Dust VPN (control plane prototype)
+# Gold Dust VPN (control plane)
 
-Gold Dust VPN is a small Rust command-line control plane that simulates an **Oxen-first, Tor-fallback** routing policy.
+Gold Dust is a **Rust control-plane prototype** for a VPN-style router:
 
-It does **not** move packets. Instead, it answers the question:
+- **Oxen-first, Tor-fallback** policy
+- Health-checks simulated in Rust
+- Simple CLI to show routing decisions and backend status
+- Minimal TCP proxy to actually move HTTP traffic
 
-> “Given the current health of my Oxen nodes and Tor exits, which backend *would* I send this connection to?”
-
-This makes it a clean portfolio project for backend / systems work:
-- config file
-- CLI with subcommands
-- simple routing policy
-- structured status output
+It is **not** a full VPN tunnel. It’s the brain that decides *which* backend path to use.
 
 ---
 
-## Features (v0.1)
+## Features
 
-- **Backends**:
-  - Two simulated Oxen nodes
-  - One simulated Tor exit
-- **Health snapshot**:
-  - Latency (ms)
-  - Failure rate (0.0 – 1.0)
-  - Enabled flag from config
-- **Routing policy**:
-  - Prefer enabled Oxen nodes with the lowest latency
-  - If all Oxen are disabled, **fall back to Tor**
-  - If everything is disabled, return an error
+- Config file: `gold-dust-vpn.toml` controls:
+  - Whether Oxen and Tor are enabled
+  - Basic latency / failure-rate modeling
+- CLI commands:
+  - `status` – show backend health
+  - `route <host:port>` – pick the best backend for a target
+  - `proxy <host:port>` – stream real TCP traffic through the chosen backend
+- Oxen-first policy:
+  - Prefer Oxen when enabled and “healthy”
+  - Fall back to Tor if Oxen is disabled or looks degraded
 
 ---
 
-## Config
+## Quickstart
 
-Gold Dust reads a simple TOML config from `gold-dust-vpn.toml` in the project root:
+From the repo root:
 
-```toml
-[backends]
-oxen_enabled = true
-tor_enabled = true
+```bash
+cargo run -- status

@@ -1,117 +1,142 @@
 use clap::{Parser, Subcommand};
-use serde::Deserialize;
-use std::fs;
-use std::path::Path;
+
+mod config;
+mod router;
+
+use crate::config::GoldDustConfig;
+use crate::router::{BackendChoice, Router};
 
 /// Gold Dust VPN: Oxen-first, Tor-fallback routing brain.
 ///
-/// v0.1: health checks + "which backend would I use?" decisions.
-/// This is a control plane, not a full VPN tunnel yet.
-
-#[derive(Debug, Deserialize)]
-struct BackendsConfig {
-    oxen_enabled: bool,
-    tor_enabled: bool,
-}
-
-#[derive(Debug, Deserialize)]
-struct GoldDustConfig {
-    backends: BackendsConfig,
-}
-
-#[derive(Debug)]
-enum BackendChoice {
-    Oxen,
-    Tor,
-    None(&'static str),
-}
-
+/// v0.2: adds a simple TCP proxy mode that actually connects to the target.
+/// This is still a control plane demo, not a full VPN tunnel.
 #[derive(Parser, Debug)]
 #[command(name = "gold-dust-vpn", version)]
 struct Cli {
-    /// Path to config file (defaults to ./gold-dust-vpn.toml)
-    #[arg(long, short)]
-    config: Option<String>,
+    /// Path to the Gold Dust VPN config file
+    #[arg(long, short, default_value = "gold-dust-vpn.toml")]
+    config: String,
 
     #[command(subcommand)]
-    command: Command,
+    command: Commands,
 }
 
 #[derive(Subcommand, Debug)]
-enum Command {
-    /// Show backend health and current preferred route
+enum Commands {
+    /// Show current backend health for Oxen and Tor
     Status,
-    /// Decide how we would route a given host:port
+    /// Show which backend Gold Dust would use for a target
     Route {
-        /// Host:port pair, e.g. example.com:443
+        /// Target in host:port form, e.g. example.com:443
+        target: String,
+    },
+    /// Connect to a target and proxy stdin/stdout through the chosen backend
+    Proxy {
+        /// Target in host:port form, e.g. example.com:80
         target: String,
     },
 }
 
-fn load_config(path: &Path) -> anyhow::Result<GoldDustConfig> {
-    let raw = fs::read_to_string(path)?;
-    let cfg: GoldDustConfig = toml::from_str(&raw)?;
-    Ok(cfg)
-}
-
-fn check_backends(cfg: &GoldDustConfig) -> String {
-    let mut lines = Vec::new();
-
-    if cfg.backends.oxen_enabled {
-        lines.push("Oxen: enabled (stubbed healthy)".to_string());
-    } else {
-        lines.push("Oxen: disabled".to_string());
-    }
-
-    if cfg.backends.tor_enabled {
-        lines.push("Tor: enabled (stubbed healthy)".to_string());
-    } else {
-        lines.push("Tor: disabled".to_string());
-    }
-
-    lines.join("\n")
-}
-
-fn choose_backend(cfg: &GoldDustConfig, _target: &str) -> BackendChoice {
-    if cfg.backends.oxen_enabled {
-        BackendChoice::Oxen
-    } else if cfg.backends.tor_enabled {
-        BackendChoice::Tor
-    } else {
-        BackendChoice::None("no backends enabled in config")
-    }
-}
-
-fn main() -> anyhow::Result<()> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
-    let cfg_path_str = cli
-        .config
-        .unwrap_or_else(|| "gold-dust-vpn.toml".to_string());
-    let cfg_path = Path::new(&cfg_path_str);
-
-    let cfg = load_config(cfg_path)?;
+    // Load config and build router
+    let cfg = GoldDustConfig::load(&cli.config)?;
+    let mut router = Router::from_config(&cfg);
 
     match cli.command {
-        Command::Status => {
-            let status = check_backends(&cfg);
-            println!("{status}");
+        Commands::Status => {
+            println!("=== Gold Dust VPN backend status ===");
+            let health_list = router.backend_health();
+            for backend in health_list {
+                println!(
+                    "- {:<12} [{:?}]  latency={:6.1} ms  failure_rate={:.3}  enabled={}",
+                    backend.name,
+                    backend.kind,
+                    backend.latency_ms,
+                    backend.failure_rate,
+                    backend.enabled
+                );
+            }
         }
-        Command::Route { target } => {
-            let choice = choose_backend(&cfg, &target);
+
+        Commands::Route { target } => {
+            println!("=== Gold Dust VPN route decision ===");
+            println!("Target:   {target}");
+
+            let choice = router.choose_backend_for(&target);
             match choice {
-                BackendChoice::Oxen => {
-                    println!("Gold Dust VPN would route {target} via OXEN (primary).");
+                BackendChoice::Backend { backend, health } => {
+                    println!("Backend:  {} [{:?}]", backend.name, backend.kind);
+                    println!("Latency:  {:.1} ms", health.latency_ms);
+                    println!("Failure:  {:.3}", health.failure_rate);
+                    println!(
+                        "Decision: use {} (Oxen-first, Tor-fallback policy)",
+                        backend.name
+                    );
                 }
-                BackendChoice::Tor => {
-                    println!("Gold Dust VPN would route {target} via TOR (fallback).");
+                BackendChoice::NoBackend(msg) => {
+                    println!("Decision: {msg}");
                 }
-                BackendChoice::None(reason) => {
-                    println!("No backend available for {target}: {reason}");
+            }
+        }
+
+        Commands::Proxy { target } => {
+            println!("=== Gold Dust VPN proxy ===");
+            println!("Target:   {target}");
+
+            // Use the router to pick a backend BEFORE we enter async I/O
+            let choice = router.choose_backend_for(&target);
+
+            match choice {
+                BackendChoice::Backend { backend, health } => {
+                    println!("Backend:  {} [{:?}]", backend.name, backend.kind);
+                    println!("Latency:  {:.1} ms", health.latency_ms);
+                    println!("Failure:  {:.3}", health.failure_rate);
+                    println!(
+                        "Note: this demo connects directly to {target}.\n\
+                         In a full build, Oxen/Tor would be separate network paths."
+                    );
+
+                    // Now actually connect and pipe bytes
+                    run_proxy_to_target(&target).await?;
+                }
+                BackendChoice::NoBackend(msg) => {
+                    eprintln!("No backend available: {msg}");
                 }
             }
         }
     }
+
+    Ok(())
+}
+
+/// Connects to the given host:port and shuttles data
+/// between stdin/stdout and the remote socket.
+async fn run_proxy_to_target(target: &str) -> Result<(), Box<dyn std::error::Error>> {
+    use tokio::io;
+    use tokio::net::TcpStream;
+
+    println!();
+    println!("Connecting to {target} ...");
+    let stream = TcpStream::connect(target).await?;
+    println!("Connected.");
+    println!("Piping stdin -> remote and remote -> stdout.");
+    println!("Press Ctrl+C to stop.\n");
+
+    let (mut rd, mut wr) = stream.into_split();
+
+    let mut stdin = io::stdin();
+    let mut stdout = io::stdout();
+
+    // stdin -> remote
+    let client_to_remote = io::copy(&mut stdin, &mut wr);
+    // remote -> stdout
+    let remote_to_client = io::copy(&mut rd, &mut stdout);
+
+    // Run both directions until one side closes
+    let _ = tokio::try_join!(client_to_remote, remote_to_client)?;
 
     Ok(())
 }
