@@ -37,7 +37,7 @@ async fn index() -> Html<String> {
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Gold Dust VPN Control</title>
+  <title>Gold Dust Gateway Control</title>
   <style>
     body {{
       background: #0b0c10;
@@ -117,7 +117,7 @@ async fn index() -> Html<String> {
 </head>
 <body>
   <div class="card">
-    <h1>Gold Dust VPN</h1>
+    <h1>Gold Dust Gateway</h1>
     <div class="status">
       Proxy status:
       <span class="{status_class}">{status_text}</span>
