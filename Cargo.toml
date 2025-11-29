@@ -5,8 +5,14 @@ edition = "2021"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
+rand = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rand = "0.8"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-util", "io-std", "net"] }
 toml = "0.8"
+tokio = { version = "1.48", features = ["macros", "rt-multi-thread"] }
+tokio-socks = "0.5"
+axum = { version = "0.7", features = ["json"] }
+
+[[bin]]
+name = "dispatcher"
+path = "src/bin/dispatcher.rs"

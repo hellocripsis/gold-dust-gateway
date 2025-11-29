@@ -27,3 +27,14 @@ impl GoldDustConfig {
         Ok(cfg)
     }
 }
+impl GoldDustConfig {
+    /// Fallback config if gold-dust-vpn.toml is missing.
+    pub fn default_for_demo() -> Self {
+        Self {
+            backends: BackendConfig {
+                oxen_enabled: true,
+                tor_enabled: true,
+            },
+        }
+    }
+}
