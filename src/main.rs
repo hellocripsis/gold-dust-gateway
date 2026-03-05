@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 
 use gold_dust_gateway::config::GoldDustConfig;
-use gold_dust_gateway::router::{BackendChoice, BackendHealth, BackendKind, Router};
+use gold_dust_gateway::router::{BackendChoice, BackendKind, Router, RouterError};
 
 /// Gold Dust Gateway: Oxen-first, Tor-fallback routing brain.
 ///
@@ -64,7 +64,7 @@ fn print_route_decision(target: &str, choice: &BackendChoice) {
     println!(
         "Decision: use {} ({})",
         choice.name,
-        backend_label(choice.kind.clone())
+        backend_label(choice.kind)
     );
 }
 
@@ -80,7 +80,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             print_status(&mut router);
         }
         Commands::Route { target } => {
-            let choice = router.choose_backend_for(&target);
+            let choice = router
+                .choose_backend_for(&target)
+                .map_err(|e: RouterError| -> Box<dyn Error> { Box::new(e) })?;
             print_route_decision(&target, &choice);
         }
     }

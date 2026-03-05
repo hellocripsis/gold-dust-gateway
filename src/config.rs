@@ -26,9 +26,8 @@ impl GoldDustConfig {
         let cfg: GoldDustConfig = toml::from_str(&text)?;
         Ok(cfg)
     }
-}
-impl GoldDustConfig {
-    /// Fallback config if gold-dust-vpn.toml is missing.
+
+    /// Fallback config if gold-dust-gateway.toml is missing.
     pub fn default_for_demo() -> Self {
         Self {
             backends: BackendConfig {
@@ -36,5 +35,46 @@ impl GoldDustConfig {
                 tor_enabled: true,
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::GoldDustConfig;
+    use std::fs;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_temp_file(name: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock should be after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("gold-dust-{name}-{nanos}.toml"))
+    }
+
+    #[test]
+    fn loads_valid_config() {
+        let path = unique_temp_file("config-ok");
+        fs::write(
+            &path,
+            "[backends]\noxen_enabled = true\ntor_enabled = false\n",
+        )
+        .expect("should write test config");
+
+        let cfg = GoldDustConfig::load(&path).expect("valid config should load");
+        assert!(cfg.backends.oxen_enabled);
+        assert!(!cfg.backends.tor_enabled);
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn fails_on_invalid_config_shape() {
+        let path = unique_temp_file("config-bad");
+        fs::write(&path, "invalid = true\n").expect("should write test config");
+        let result = GoldDustConfig::load(&path);
+        assert!(result.is_err());
+        let _ = fs::remove_file(path);
     }
 }

@@ -1,9 +1,11 @@
+use std::error::Error;
 use std::fs;
 use std::net::SocketAddr;
 
 use axum::{
+    http::StatusCode,
     response::{Html, Redirect},
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use tokio::net::TcpListener;
@@ -17,12 +19,11 @@ fn read_flag() -> bool {
     }
 }
 
-fn write_flag(on: bool) {
-    let _ = fs::write(FLAG_PATH, if on { "on\n" } else { "off\n" });
+fn write_flag(on: bool) -> std::io::Result<()> {
+    fs::write(FLAG_PATH, if on { "on\n" } else { "off\n" })
 }
 
-async fn index() -> Html<String> {
-    let on = read_flag();
+fn render_index(on: bool) -> String {
     let status_text = if on { "ON (Tor)" } else { "OFF (Direct)" };
     let status_class = if on { "on" } else { "off" };
     let button_label = if on {
@@ -30,9 +31,9 @@ async fn index() -> Html<String> {
     } else {
         "Switch to Tor (ON)"
     };
-    let button_href = if on { "/off" } else { "/on" };
+    let button_action = if on { "/off" } else { "/on" };
 
-    let html = format!(
+    format!(
         r#"<!doctype html>
 <html lang="en">
 <head>
@@ -85,12 +86,14 @@ async fn index() -> Html<String> {
       color: #e74c3c;
       border: 1px solid rgba(231, 76, 60, 0.6);
     }}
-    a.button {{
+    form {{
+      margin: 0;
+    }}
+    button {{
       display: inline-block;
       margin-top: 8px;
       padding: 10px 22px;
       border-radius: 999px;
-      text-decoration: none;
       font-weight: 600;
       letter-spacing: 0.04em;
       text-transform: uppercase;
@@ -98,8 +101,9 @@ async fn index() -> Html<String> {
       background: #f1c40f;
       color: #11131a;
       border: none;
+      cursor: pointer;
     }}
-    a.button:hover {{
+    button:hover {{
       background: #f5d76e;
     }}
     .hint {{
@@ -122,7 +126,9 @@ async fn index() -> Html<String> {
       Proxy status:
       <span class="{status_class}">{status_text}</span>
     </div>
-    <a class="button" href="{button_href}">{button_label}</a>
+    <form method="post" action="{button_action}">
+      <button type="submit">{button_label}</button>
+    </form>
     <div class="hint">
       Browser HTTP proxy: <code>127.0.0.1:7777</code><br/>
       This only affects apps pointed at the Gold Dust proxy.
@@ -133,33 +139,61 @@ async fn index() -> Html<String> {
 "#,
         status_class = status_class,
         status_text = status_text,
-        button_href = button_href,
+        button_action = button_action,
         button_label = button_label
-    );
-
-    Html(html)
+    )
 }
 
-async fn set_on() -> Redirect {
-    write_flag(true);
-    Redirect::to("/")
+fn render_error(msg: &str) -> Html<String> {
+    Html(format!(
+        r#"<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Gold Dust Dashboard Error</title></head>
+<body style="font-family: sans-serif; background:#111; color:#eee; padding: 2rem;">
+  <h1>Dashboard Error</h1>
+  <p>{}</p>
+  <p><a href="/" style="color:#f1c40f;">Back to dashboard</a></p>
+</body>
+</html>"#,
+        msg
+    ))
 }
 
-async fn set_off() -> Redirect {
-    write_flag(false);
-    Redirect::to("/")
+async fn index() -> Html<String> {
+    Html(render_index(read_flag()))
+}
+
+async fn set_on() -> Result<Redirect, (StatusCode, Html<String>)> {
+    write_flag(true).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            render_error(&format!("Failed to switch Tor mode on: {e}")),
+        )
+    })?;
+    Ok(Redirect::to("/"))
+}
+
+async fn set_off() -> Result<Redirect, (StatusCode, Html<String>)> {
+    write_flag(false).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            render_error(&format!("Failed to switch direct mode off: {e}")),
+        )
+    })?;
+    Ok(Redirect::to("/"))
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), Box<dyn Error + Send + Sync>> {
     let app = Router::new()
         .route("/", get(index))
-        .route("/on", get(set_on))
-        .route("/off", get(set_off));
+        .route("/on", post(set_on))
+        .route("/off", post(set_off));
 
-    let addr: SocketAddr = "127.0.0.1:3000".parse().unwrap();
-    let listener = TcpListener::bind(addr).await.unwrap();
+    let addr: SocketAddr = "127.0.0.1:3000".parse()?;
+    let listener = TcpListener::bind(addr).await?;
 
     println!("[dashboard] Web UI listening on http://{addr}");
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app).await?;
+    Ok(())
 }

@@ -36,19 +36,19 @@ Everything runs locally on 127.0.0.1.
 
 Run help:
 
-    cargo run -- --help
+    cargo run --bin gold-dust-gateway -- --help
 
 Examples:
 
     # Show backend health snapshot
-    cargo run -- status
+    cargo run --bin gold-dust-gateway -- status
 
     # Ask which backend would be used for a given target
-    cargo run -- route example.com:443
+    cargo run --bin gold-dust-gateway -- route example.com:443
 
 Config file path (optional):
 
-    cargo run -- --config gold-dust-gateway.toml status
+    cargo run --bin gold-dust-gateway -- --config gold-dust-gateway.toml status
 
 Notes:
 - Backend health values are simulated for demonstration.

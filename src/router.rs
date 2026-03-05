@@ -1,6 +1,8 @@
 use crate::config::GoldDustConfig;
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use std::error::Error;
+use std::fmt;
 
 /// Which family a backend belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,6 +29,21 @@ pub struct BackendChoice {
     pub latency_ms: f64,
     pub failure_rate: f64,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RouterError {
+    NoBackendsConfigured,
+}
+
+impl fmt::Display for RouterError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoBackendsConfigured => write!(f, "no backends are configured or enabled"),
+        }
+    }
+}
+
+impl Error for RouterError {}
 
 /// Simple in-memory router: Oxen-first, Tor-fallback.
 #[derive(Debug)]
@@ -75,7 +92,7 @@ impl Router {
     }
 
     /// Pick a backend for this target (Oxen-first, Tor-fallback).
-    pub fn choose_backend_for(&mut self, _target: &str) -> BackendChoice {
+    pub fn choose_backend_for(&mut self, _target: &str) -> Result<BackendChoice, RouterError> {
         let mut rng = thread_rng();
 
         // 1) Prefer enabled Oxen
@@ -86,12 +103,12 @@ impl Router {
             .collect::<Vec<_>>()
             .choose(&mut rng)
         {
-            return BackendChoice {
+            return Ok(BackendChoice {
                 name: chosen.name.clone(),
                 kind: chosen.kind,
                 latency_ms: chosen.latency_ms,
                 failure_rate: chosen.failure_rate,
-            };
+            });
         }
 
         // 2) Fall back to enabled Tor
@@ -102,25 +119,55 @@ impl Router {
             .collect::<Vec<_>>()
             .choose(&mut rng)
         {
-            return BackendChoice {
+            return Ok(BackendChoice {
                 name: chosen.name.clone(),
                 kind: chosen.kind,
                 latency_ms: chosen.latency_ms,
                 failure_rate: chosen.failure_rate,
-            };
+            });
         }
 
-        // 3) Absolute fallback: first backend, even if disabled
-        let chosen = self
-            .backends
-            .first()
-            .expect("at least one backend must be configured");
+        Err(RouterError::NoBackendsConfigured)
+    }
+}
 
-        BackendChoice {
-            name: chosen.name.clone(),
-            kind: chosen.kind,
-            latency_ms: chosen.latency_ms,
-            failure_rate: chosen.failure_rate,
-        }
+#[cfg(test)]
+mod tests {
+    use super::{BackendKind, Router, RouterError};
+    use crate::config::{BackendConfig, GoldDustConfig};
+
+    fn build_router(oxen_enabled: bool, tor_enabled: bool) -> Router {
+        let cfg = GoldDustConfig {
+            backends: BackendConfig {
+                oxen_enabled,
+                tor_enabled,
+            },
+        };
+        Router::from_config(&cfg)
+    }
+
+    #[test]
+    fn returns_error_when_no_backends_enabled() {
+        let mut router = build_router(false, false);
+        let result = router.choose_backend_for("example.com:443");
+        assert!(matches!(result, Err(RouterError::NoBackendsConfigured)));
+    }
+
+    #[test]
+    fn prefers_oxen_when_available() {
+        let mut router = build_router(true, true);
+        let choice = router
+            .choose_backend_for("example.com:443")
+            .expect("oxen backends should be selected");
+        assert_eq!(choice.kind, BackendKind::Oxen);
+    }
+
+    #[test]
+    fn falls_back_to_tor_when_oxen_disabled() {
+        let mut router = build_router(false, true);
+        let choice = router
+            .choose_backend_for("example.com:443")
+            .expect("tor backend should be selected");
+        assert_eq!(choice.kind, BackendKind::Tor);
     }
 }
