@@ -20,22 +20,18 @@ Routing brain + status.
 
 From this crate:
 
-```bash
-cargo run --bin gold-dust-gateway -- --help
-````
+    cargo run --bin gold-dust-gateway -- --help
 
 Examples:
 
-```bash
-# Show backend status (simulated Oxen / Tor backends)
-cargo run --bin gold-dust-gateway -- status
+    # Show backend status (simulated Oxen / Tor backends)
+    cargo run --bin gold-dust-gateway -- status
 
-# Ask which backend would be used for a given target
-cargo run --bin gold-dust-gateway -- route example.com:443
+    # Ask which backend would be used for a given target
+    cargo run --bin gold-dust-gateway -- route example.com:443
 
-# Ask Krypton (OSRNG-based) for entropy health
-cargo run --bin gold-dust-gateway -- health --samples 4096
-```
+    # Ask Krypton (OSRNG-based) for entropy health
+    cargo run --bin gold-dust-gateway -- health --samples 4096
 
 The `health` command prints:
 
@@ -54,16 +50,12 @@ A minimal HTTP CONNECT proxy that listens on `127.0.0.1:7777` and routes:
 
 Run it:
 
-```bash
-cargo run --bin dispatcher
-```
+    cargo run --bin dispatcher
 
 Then point a tool at it, for example:
 
-```bash
-# Example: curl over the proxy
-curl -x http://127.0.0.1:7777 https://check.torproject.org/
-```
+    # Example: curl over the proxy
+    curl -x http://127.0.0.1:7777 https://check.torproject.org/
 
 ---
 
@@ -76,13 +68,11 @@ A small Axum-based dashboard on `http://127.0.0.1:3000` that:
 
 Run it:
 
-```bash
-cargo run --bin dashboard
-```
+    cargo run --bin dashboard
 
 Then visit:
 
-* [http://127.0.0.1:3000/](http://127.0.0.1:3000/) in a browser
+* http://127.0.0.1:3000/ in a browser
 
 ---
 
@@ -107,6 +97,6 @@ The dashboard reads and writes this flag, so toggling in the UI immediately affe
 
 This binary uses:
 
-* [`krypton-entropy-core`](../krypton-entropy-core) for OSRNG-based entropy metrics and `Keep`/`Throttle`/`Kill` decisions.
+* `krypton-entropy-core` for OSRNG-based entropy metrics and `Keep`/`Throttle`/`Kill` decisions.
 
 The `health` CLI command calls into Krypton. All entropy comes from the OS RNG via the `rand` crate. No custom RNG or proprietary entropy core is implemented here.
