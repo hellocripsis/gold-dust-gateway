@@ -7,8 +7,6 @@ use gold_dust_gateway::config::GoldDustConfig;
 use gold_dust_gateway::router::{BackendChoice, BackendKind, Router, RouterError};
 
 /// Gold Dust Gateway: Oxen-first, Tor-fallback routing brain.
-///
-/// v0.2: shared core + dispatcher + HTTP CONNECT proxy.
 #[derive(Parser, Debug)]
 #[command(name = "gold-dust-gateway", version)]
 struct Cli {
@@ -32,8 +30,17 @@ enum Commands {
 }
 
 fn load_config(path: Option<PathBuf>) -> Result<GoldDustConfig, Box<dyn Error>> {
-    let cfg_path = path.unwrap_or_else(|| PathBuf::from("gold-dust-gateway.toml"));
-    GoldDustConfig::load(cfg_path)
+    match path {
+        Some(explicit) => GoldDustConfig::load(explicit),
+        None => {
+            let default_path = PathBuf::from("gold-dust-gateway.toml");
+            if default_path.exists() {
+                GoldDustConfig::load(default_path)
+            } else {
+                Ok(GoldDustConfig::default_for_demo())
+            }
+        }
+    }
 }
 
 fn backend_label(kind: BackendKind) -> &'static str {

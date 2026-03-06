@@ -1,17 +1,17 @@
 [package]
 name = "gold-dust-gateway"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
+default-run = "gold-dust-gateway"
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 toml = "0.8"
-tokio = { version = "1.48", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.48", features = ["macros", "rt-multi-thread", "time"] }
 tokio-socks = "0.5"
-axum = { version = "0.7", features = ["json"] }
+axum = "0.7"
 
 [[bin]]
 name = "dispatcher"

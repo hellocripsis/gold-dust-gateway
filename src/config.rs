@@ -12,8 +12,6 @@ pub struct BackendConfig {
 }
 
 /// Top-level Gold Dust config.
-///
-/// For v0.2 this is very simple: just switches for Oxen/Tor.
 #[derive(Debug, Clone, Deserialize)]
 pub struct GoldDustConfig {
     pub backends: BackendConfig,

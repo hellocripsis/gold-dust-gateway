@@ -2,15 +2,16 @@ use std::error::Error;
 use std::fs;
 use std::net::SocketAddr;
 
+use gold_dust_gateway::FLAG_PATH;
 use tokio::io::{self, AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::time::{timeout, Duration};
 use tokio_socks::tcp::Socks5Stream;
-
-const FLAG_PATH: &str = "gold-dust-tor.flag";
 const HEADER_READ_TIMEOUT: Duration = Duration::from_secs(10);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
-const TUNNEL_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
+/// Absolute wall-clock deadline for an open tunnel. Kills the connection
+/// at 5 minutes regardless of activity. Not an idle timeout.
+const TUNNEL_MAX_DURATION: Duration = Duration::from_secs(300);
 
 type DynError = Box<dyn Error + Send + Sync>;
 
@@ -89,11 +90,11 @@ async fn handle_client(mut inbound: TcpStream) -> Result<(), DynError> {
             .await?;
 
         timeout(
-            TUNNEL_IDLE_TIMEOUT,
+            TUNNEL_MAX_DURATION,
             io::copy_bidirectional(&mut inbound, &mut outbound),
         )
         .await
-        .map_err(|_| "tunnel idle timeout reached")??;
+        .map_err(|_| "tunnel max duration reached")??;
     } else {
         // 2b) DIRECT TCP
         let mut outbound = timeout(CONNECT_TIMEOUT, TcpStream::connect(target.clone()))
@@ -104,11 +105,11 @@ async fn handle_client(mut inbound: TcpStream) -> Result<(), DynError> {
             .await?;
 
         timeout(
-            TUNNEL_IDLE_TIMEOUT,
+            TUNNEL_MAX_DURATION,
             io::copy_bidirectional(&mut inbound, &mut outbound),
         )
         .await
-        .map_err(|_| "tunnel idle timeout reached")??;
+        .map_err(|_| "tunnel max duration reached")??;
     }
 
     Ok(())

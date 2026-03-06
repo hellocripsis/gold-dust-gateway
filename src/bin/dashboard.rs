@@ -8,9 +8,8 @@ use axum::{
     routing::{get, post},
     Router,
 };
+use gold_dust_gateway::FLAG_PATH;
 use tokio::net::TcpListener;
-
-const FLAG_PATH: &str = "gold-dust-tor.flag";
 
 fn read_flag() -> bool {
     match fs::read_to_string(FLAG_PATH) {
